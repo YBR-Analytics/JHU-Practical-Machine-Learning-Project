@@ -1,0 +1,135 @@
+---
+title: "Practical Machine Learning Project"
+author: "Jim Barker"
+date: "Wednesday, January 21, 2015"
+output: html_document
+---
+## Machine Learning Project
+
+This project will attempt to create a machine learning algorithm in order to predict the quality of weight lifting exercises performed by test subjects. The data was gathered by the HAR (Human Activity Recognition) project using body sensors. Since we are predicting a 
+qualitative variable, we will use a classification algorithm for our model, specifically the GBM (Generalized Boosted Regression) R package.
+
+A full description of the experiment can be found at the following website:
+  http://groupware.les.inf.puc-rio.br/har#wle_paper_section
+
+Note: Citations are in Appendix I
+
+### Expected Accuracy
+
+The goal of this project will be to create a model with accuracy exceeding 90%.
+
+
+### Create Training and Testing data sets
+
+```{r init}
+library(caret)
+library(gbm)
+fp <- "/Users/HP-JEB/Desktop/Machine_Learning/pml_training.csv"
+df <- read.csv(fp,strip.white=T,stringsAsFactors=F)
+fp <- "/Users/HP-JEB/Desktop/Machine_Learning/pml_testing.csv"
+df2 <- read.csv(fp,strip.white=T,stringsAsFactors=F)
+inTrain <- createDataPartition(df$classe,p=0.1,list=FALSE)
+# Training
+training <- df[inTrain,]
+# Validation
+testing <- df[-inTrain,]
+```
+
+### Variable selection
+
+Steps for choosing model predictors:
+
+* Eliminate variables with near zero variation since they add no value to the prediction model.  
+
+* Eliminate variables pertaining to non empirical data. For example:  
+  user_name  
+  raw_timestamp_part_1  
+  raw_timestamp_part_2  
+  cvtd_timestamp  
+  new_window  
+  num_window  
+  
+* Any variable that is a statistical summary of an empirical predictor will also be eliminated due to the high correlations. For example:  
+  max_roll_belt  
+  min_roll_belt  
+  avg_roll_belt  
+
+* Variables with zero or near zero variation.    
+
+```{r nearz}
+nrz <- nearZeroVar(df,saveMetrics=TRUE)
+v_list <- nrz$nzv == FALSE
+v_names <- names(df)
+v_list2 <- v_names[v_list]
+```
+
+
+Note: The variables chosen are indicated in the next code section.
+
+### Model Creation
+
+I tested several model training packages (including glm, lda, and rpart) and found that gbm (Generalized Boosted Regression Models) gave the best prediction accuracy.
+
+
+```{r var_select}
+n_vec <- c("accel_arm_x","accel_arm_y","accel_arm_z","accel_belt_x","accel_belt_y","accel_belt_z",
+           "accel_dumbbell_x","accel_dumbbell_y","accel_dumbbell_z","accel_forearm_x","accel_forearm_y",
+           "accel_forearm_z","gyros_arm_x","gyros_arm_y","gyros_arm_z","gyros_belt_x","gyros_belt_y",
+           "gyros_belt_z","gyros_dumbbell_x","gyros_dumbbell_y","gyros_dumbbell_z","gyros_forearm_x",
+           "gyros_forearm_y","gyros_forearm_z","magnet_arm_x","magnet_arm_y","magnet_arm_z",
+           "magnet_belt_x","magnet_belt_y","magnet_belt_z","magnet_dumbbell_x","magnet_dumbbell_y",
+           "magnet_dumbbell_z","magnet_forearm_x","magnet_forearm_y","magnet_forearm_z","pitch_arm",
+           "pitch_belt","pitch_dumbbell","pitch_forearm","roll_arm","roll_belt","roll_dumbbell",
+           "roll_forearm","yaw_arm","yaw_belt","yaw_dumbbell","yaw_forearm","classe")
+training <- data.frame(training$accel_arm_x,training$accel_arm_y,training$accel_arm_z,training$accel_belt_x,training$accel_belt_y,
+                         training$accel_belt_z,training$accel_dumbbell_x,training$accel_dumbbell_y,training$accel_dumbbell_z,
+                         training$accel_forearm_x,training$accel_forearm_y,training$accel_forearm_z,training$gyros_arm_x,
+                         training$gyros_arm_y,training$gyros_arm_z,training$gyros_belt_x,training$gyros_belt_y,training$gyros_belt_z,
+                         training$gyros_dumbbell_x,training$gyros_dumbbell_y,training$gyros_dumbbell_z,training$gyros_forearm_x,
+                         training$gyros_forearm_y,training$gyros_forearm_z,training$magnet_arm_x,training$magnet_arm_y,
+                         training$magnet_arm_z,training$magnet_belt_x,training$magnet_belt_y,training$magnet_belt_z,
+                         training$magnet_dumbbell_x,training$magnet_dumbbell_y,training$magnet_dumbbell_z,training$magnet_forearm_x,
+                         training$magnet_forearm_y,training$magnet_forearm_z,training$pitch_arm,training$pitch_belt,
+                         training$pitch_dumbbell,training$pitch_forearm,training$roll_arm,training$roll_belt,training$roll_dumbbell,
+                         training$roll_forearm,training$yaw_arm,training$yaw_belt,training$yaw_dumbbell,training$yaw_forearm,
+                         training$classe,stringsAsFactors = TRUE)
+names(training) <- n_vec
+validation <- data.frame(testing$accel_arm_x,testing$accel_arm_y,testing$accel_arm_z,testing$accel_belt_x,testing$accel_belt_y,
+                         testing$accel_belt_z,testing$accel_dumbbell_x,testing$accel_dumbbell_y,testing$accel_dumbbell_z,
+                         testing$accel_forearm_x,testing$accel_forearm_y,testing$accel_forearm_z,testing$gyros_arm_x,
+                         testing$gyros_arm_y,testing$gyros_arm_z,testing$gyros_belt_x,testing$gyros_belt_y,testing$gyros_belt_z,
+                         testing$gyros_dumbbell_x,testing$gyros_dumbbell_y,testing$gyros_dumbbell_z,testing$gyros_forearm_x,
+                         testing$gyros_forearm_y,testing$gyros_forearm_z,testing$magnet_arm_x,testing$magnet_arm_y,
+                         testing$magnet_arm_z,testing$magnet_belt_x,testing$magnet_belt_y,testing$magnet_belt_z,
+                         testing$magnet_dumbbell_x,testing$magnet_dumbbell_y,testing$magnet_dumbbell_z,testing$magnet_forearm_x,
+                         testing$magnet_forearm_y,testing$magnet_forearm_z,testing$pitch_arm,testing$pitch_belt,
+                         testing$pitch_dumbbell,testing$pitch_forearm,testing$roll_arm,testing$roll_belt,testing$roll_dumbbell,
+                         testing$roll_forearm,testing$yaw_arm,testing$yaw_belt,testing$yaw_dumbbell,testing$yaw_forearm,
+                         testing$classe,stringsAsFactors = TRUE)
+names(validation) <- n_vec
+# Do cross validation
+tc <- trainControl(method="cv")
+gbmFit <- train(training$classe ~ .,method="gbm",data=training,verbose=FALSE,trControl=tc)
+gbm.predict1 <- predict(gbmFit,validation)
+```
+
+### Model Accuracy 
+
+```{r modl_acc}
+print(confusionMatrix(validation$classe,gbm.predict1))
+```
+
+### Results for training data set
+```{r train1}
+testing2 <- df2
+gbm.predict2 <- predict(gbmFit,testing2)
+print(gbm.predict2)
+```
+
+
+### Appendix I - HAR Citation
+
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body
+Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012.
+In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. 
+DOI: 10.1007/978-3-642-34459-6_6. 
